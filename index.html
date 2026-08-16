@@ -1,0 +1,1314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>IR DEV — calibrated 530–750nm developer · Studio Wetware</title>
+<style>
+:root{
+  --void:#0B0A09;      /* warm black — tray bottom */
+  --tray:#15120E;      /* panel */
+  --edge:#2B2319;      /* rule */
+  --paper:#EDE7DC;     /* print white */
+  --dim:#8C8377;       /* secondary type */
+  --amber:#E0921C;     /* safelight */
+  --ir:#8E2B14;        /* deep IR marker */
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,"Roboto Mono",monospace;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{
+  background:var(--void);color:var(--paper);font-family:var(--sans);
+  font-size:15px;line-height:1.4;
+  display:flex;flex-direction:column;overflow:hidden;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+/* ---- header ---- */
+header{
+  flex:0 0 auto;display:flex;align-items:baseline;gap:10px;
+  padding:10px 14px 8px;border-bottom:1px solid var(--edge);
+}
+.mark{font-family:var(--mono);font-size:12px;letter-spacing:.24em;text-transform:uppercase}
+.mark b{font-weight:700;color:var(--paper)}
+.mark span{color:var(--ir)}
+.band{margin-left:auto;font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;color:var(--dim)}
+
+/* ---- viewer ---- */
+#stage{
+  flex:1 1 auto;position:relative;min-height:34vh;
+  display:flex;align-items:center;justify-content:center;
+  background:
+    repeating-linear-gradient(45deg,#0f0d0b 0 8px,#111 8px 16px);
+  overflow:hidden;
+}
+#gl{max-width:100%;max-height:100%;display:block;opacity:0;
+    transition:opacity .7s ease, filter .7s ease;filter:brightness(.2)}
+#gl.up{opacity:1;filter:none}
+#drop{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;
+}
+#drop.hide{display:none}
+#drop p{margin:0;color:var(--dim);font-size:13px;max-width:30ch}
+.load{
+  font-family:var(--mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--void);background:var(--amber);border:0;border-radius:2px;
+  padding:14px 22px;min-height:48px;font-weight:700;cursor:pointer;
+}
+#status{
+  position:absolute;left:0;right:0;bottom:0;padding:6px 12px;
+  font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--dim);
+  background:linear-gradient(transparent,rgba(0,0,0,.75));pointer-events:none;
+}
+#status.err{color:#FF8A6B}
+
+/* ---- controls ---- */
+#panel{
+  flex:0 0 auto;max-height:52vh;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  background:var(--tray);border-top:1px solid var(--edge);
+}
+fieldset{border:0;border-bottom:1px solid var(--edge);margin:0;padding:12px 14px 14px}
+legend{
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.22em;text-transform:uppercase;
+  color:var(--dim);padding:0;margin-bottom:8px;
+}
+
+/* signature: spectral passband strip */
+.spectrum{position:relative;height:34px;margin:2px 0 12px;border:1px solid var(--edge)}
+.spectrum .vis{position:absolute;inset:0;
+  background:linear-gradient(90deg,
+    #2A1B4D 0%, #1D3AA8 14%, #0F8A6E 28%, #37A314 40%,
+    #C9C21A 50%, #D07A12 60%, #A82817 70%, #4A130C 82%, #140807 100%);
+  opacity:.5}
+.spectrum .cut{position:absolute;top:0;bottom:0;background:rgba(6,5,4,.86)}
+.spectrum .ch{position:absolute;bottom:0;height:5px;opacity:.35}
+.spectrum .ch.on{opacity:1}
+.spectrum .tick{position:absolute;top:2px;font-family:var(--mono);font-size:9px;color:var(--paper);
+  transform:translateX(-50%);text-shadow:0 0 4px #000}
+.legend{display:flex;gap:14px;font-family:var(--mono);font-size:10px;color:var(--dim);margin:-6px 0 10px}
+.legend i{display:inline-block;width:8px;height:8px;margin-right:5px;vertical-align:-1px}
+
+/* rows */
+.row{display:grid;grid-template-columns:64px 1fr 56px;align-items:center;gap:10px;margin:2px 0}
+.row label{font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--dim);text-transform:uppercase}
+.row output{font-family:var(--mono);font-size:11.5px;text-align:right;color:var(--paper)}
+input[type=range]{
+  -webkit-appearance:none;appearance:none;width:100%;height:34px;background:transparent;margin:0;
+}
+input[type=range]::-webkit-slider-runnable-track{height:2px;background:var(--edge)}
+input[type=range]::-moz-range-track{height:2px;background:var(--edge)}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:22px;height:22px;margin-top:-10px;border-radius:50%;
+  background:var(--paper);border:3px solid var(--tray);box-shadow:0 0 0 1px var(--edge)}
+input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;border:3px solid var(--tray);background:var(--paper)}
+input[type=range]:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+
+/* chip buttons */
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{
+  font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+  min-height:40px;padding:0 12px;border:1px solid var(--edge);background:transparent;
+  color:var(--dim);border-radius:2px;cursor:pointer;
+}
+.chip[aria-pressed=true]{background:var(--amber);border-color:var(--amber);color:var(--void);font-weight:700}
+.chip:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+.chip:disabled{opacity:.3;cursor:default}
+.hint{font-family:var(--mono);font-size:10px;color:var(--dim);margin:8px 0 6px;line-height:1.5}
+.route{display:grid;grid-template-columns:56px 1fr;align-items:center;gap:8px;margin:4px 0}
+.route .out{font-family:var(--mono);font-size:11px;letter-spacing:.06em;display:flex;align-items:center;gap:6px}
+.route .out i{width:9px;height:9px;border-radius:50%;display:inline-block}
+.route .srcs{display:flex;gap:5px}
+.route .srcs button{
+  flex:1;min-height:40px;border:1px solid var(--edge);background:transparent;color:var(--dim);
+  font-family:var(--mono);font-size:11px;border-radius:2px;cursor:pointer;
+}
+.route .srcs button[aria-pressed=true]{background:var(--paper);color:var(--void);border-color:var(--paper);font-weight:700}
+.route .srcs button:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+.mrow{display:grid;grid-template-columns:52px 1fr 44px;align-items:center;gap:8px}
+.mrow label{font-family:var(--mono);font-size:10px;color:var(--dim)}
+.mrow output{font-family:var(--mono);font-size:10.5px;text-align:right}
+.mhead{font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:var(--dim);margin:10px 0 2px}
+.aimrow{display:flex;align-items:center;gap:10px;margin-top:10px}
+.aimrow label{font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--dim);text-transform:uppercase}
+.aimrow input[type=color]{
+  width:46px;height:40px;padding:0;border:1px solid var(--edge);border-radius:2px;
+  background:transparent;cursor:pointer;-webkit-appearance:none;appearance:none;flex:0 0 auto;
+}
+.aimrow input[type=color]::-webkit-color-swatch-wrapper{padding:3px}
+.aimrow input[type=color]::-webkit-color-swatch{border:0;border-radius:1px}
+.aimrow input[type=color]:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+.aimnote{font-family:var(--mono);font-size:10px;color:var(--dim);line-height:1.4}
+.aimnote b{color:var(--paper);font-weight:400}
+.swatch{display:inline-block;width:10px;height:10px;border:1px solid var(--edge);vertical-align:-1px;margin-right:5px}
+#pickDot{
+  position:absolute;width:26px;height:26px;margin:-13px 0 0 -13px;border-radius:50%;
+  border:1.5px solid var(--paper);box-shadow:0 0 0 1.5px rgba(0,0,0,.65),inset 0 0 0 1.5px rgba(0,0,0,.5);
+  pointer-events:none;display:none;
+}
+#pickDot.on{display:block}
+#gl.picking{cursor:crosshair;touch-action:none}
+
+/* footer */
+footer{
+  flex:0 0 auto;display:flex;gap:8px;padding:10px 14px;
+  background:var(--void);border-top:1px solid var(--edge);
+}
+footer button{
+  flex:1;min-height:48px;border-radius:2px;cursor:pointer;
+  font-family:var(--mono);font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;font-weight:700;
+  border:1px solid var(--edge);background:transparent;color:var(--paper);
+}
+footer button.primary{background:var(--paper);color:var(--void);border-color:var(--paper)}
+footer button:disabled{opacity:.35}
+footer button:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+.hidden{display:none!important}
+@media (prefers-reduced-motion:reduce){#gl{transition:none}}
+@media (min-width:900px){
+  body{flex-direction:row}
+  #stage{flex:1 1 auto}
+  #panel{max-height:none;width:380px;border-top:0;border-left:1px solid var(--edge);
+    display:flex;flex-direction:column;overflow-y:auto}
+  header{position:absolute;top:0;left:0;right:380px;border-bottom:0;
+    background:linear-gradient(rgba(0,0,0,.7),transparent);z-index:2}
+  footer{position:absolute;bottom:0;right:0;width:380px;border-top:1px solid var(--edge)}
+  #panel{padding-bottom:70px}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <span class="mark"><b>IR&nbsp;DEV</b> <span>●</span></span>
+  <span class="band" id="bandLabel">530–750 nm · awaiting frame</span>
+</header>
+
+<main id="stage">
+  <canvas id="gl"></canvas>
+  <div id="pickDot"></div>
+  <div id="drop">
+    <button class="load" id="openBtn">Open file</button>
+    <p>DNG or TIFF — Bayer, RGB, or grayscale, 8 or 16-bit. Local-only decoding; calibration and recipes stay on this device.</p>
+  </div>
+  <div id="status"></div>
+</main>
+
+<div id="panel" class="hidden" aria-label="Develop controls">
+
+  <fieldset>
+    <legend>Passband · channel sampling</legend>
+    <div class="spectrum" id="spectrum" aria-hidden="true">
+      <div class="vis"></div>
+      <div class="cut" id="cutLo"></div>
+      <div class="cut" id="cutHi"></div>
+      <div class="ch" id="chR" style="background:#C9422A"></div>
+      <div class="ch" id="chG" style="background:#4E9E3E"></div>
+      <div class="ch" id="chB" style="background:#3A63C4"></div>
+      <div class="tick" id="tLo">530</div>
+      <div class="tick" id="tHi">750</div>
+    </div>
+    <div class="legend">
+      <span><i style="background:#C9422A"></i>R overlapping response</span>
+      <span><i style="background:#4E9E3E"></i>G overlapping response</span>
+      <span><i style="background:#3A63C4"></i>B overlapping response</span>
+    </div>
+    <div class="chips" id="outChips" style="margin-bottom:10px">
+      <button class="chip" data-out="mono" aria-pressed="true">Monochrome</button>
+      <button class="chip" data-out="color" aria-pressed="false">Colour</button>
+    </div>
+
+    <div id="monoSection">
+    <div class="chips" id="mixChips">
+      <button class="chip" data-mode="0" aria-pressed="true">R weighted</button>
+      <button class="chip" data-mode="1" aria-pressed="false">NIR isolate</button>
+      <button class="chip" data-mode="3" aria-pressed="false">NIR − R contrast</button>
+      <button class="chip" data-mode="2" aria-pressed="false">Custom mix</button>
+    </div>
+    <div id="customMix" class="hidden" style="margin-top:10px">
+      <div class="row"><label for="wR">R</label><input id="wR" type="range" min="0" max="2" step="0.01" value="1"><output for="wR">1.00</output></div>
+      <div class="row"><label for="wG">G</label><input id="wG" type="range" min="0" max="2" step="0.01" value="0.5"><output for="wG">0.50</output></div>
+      <div class="row"><label for="wB">B</label><input id="wB" type="range" min="0" max="2" step="0.01" value="0.2"><output for="wB">0.20</output></div>
+    </div>
+    </div>
+
+    <div id="colorSection" class="hidden">
+      <div class="chips" id="colorPresets">
+        <button class="chip" data-cp="identity" aria-pressed="true">As captured</button>
+        <button class="chip" data-cp="swap" aria-pressed="false">Swap R↔B</button>
+        <button class="chip" data-cp="aero" aria-pressed="false">Aerochrome</button>
+        <button class="chip" data-cp="rotate" aria-pressed="false">Rotate</button>
+      </div>
+      <p class="hint">Each output colour is fed by one captured band. Tap a source to reroute.</p>
+      <div id="routes"></div>
+      <div class="row"><label for="sat">Sat</label><input id="sat" type="range" min="0" max="2.5" step="0.01" value="1"><output for="sat">1.00</output></div>
+      <div class="chips" style="margin-top:4px">
+        <button class="chip" id="advToggle" aria-pressed="false" aria-expanded="false">Blend matrix</button>
+      </div>
+      <div id="mixGrid" class="hidden" style="margin-top:8px"></div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Balance · per-channel gain</legend>
+    <div class="row"><label for="gR">Red</label><input id="gR" type="range" min="0.2" max="6" step="0.01" value="1"><output for="gR">1.00</output></div>
+    <div class="row"><label for="gG">Green</label><input id="gG" type="range" min="0.2" max="6" step="0.01" value="1"><output for="gG">1.00</output></div>
+    <div class="row"><label for="gB">Blue</label><input id="gB" type="range" min="0.2" max="6" step="0.01" value="1"><output for="gB">1.00</output></div>
+    <div class="chips" style="margin-top:6px">
+      <button class="chip" id="wbPick" aria-pressed="false">Pick from image</button>
+      <button class="chip" id="wbGray">Gray world</button>
+      <button class="chip" id="wbShot">As shot</button>
+      <button class="chip" id="wbFlat">Neutral</button>
+    </div>
+    <div class="aimrow">
+      <label for="aim">Aim</label>
+      <input type="color" id="aim" value="#ffffff">
+      <span class="aimnote" id="sampled">Tap the image to neutralise a patch.</span>
+    </div>
+  </fieldset>
+
+
+  <fieldset>
+    <legend>IR calibration · measured or estimated</legend>
+    <div class="row"><label for="loNm">Low nm</label><input id="loNm" type="range" min="400" max="900" step="1" value="530"><output for="loNm">530</output></div>
+    <div class="row"><label for="hiNm">High nm</label><input id="hiNm" type="range" min="450" max="1000" step="1" value="750"><output for="hiNm">750</output></div>
+    <div class="hint">The three Bayer channels overlap. These values describe the filter passband, not hard channel cutoffs.</div>
+    <div class="chips" style="margin-top:6px"><button class="chip" id="loadProfileBtn">Load profile JSON</button><button class="chip" id="clearProfileBtn">Clear profile</button></div>
+    <input id="profileFile" type="file" accept="application/json,.json" class="hidden">
+    <div id="profileStatus" class="hint">No measured response profile loaded · channel labels are estimates.</div>
+    <canvas id="histogram" width="360" height="110" aria-label="RGB channel histogram"></canvas>
+    <div id="clipStatus" class="hint">Histogram and clipping diagnostics appear after opening a frame.</div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Tone</legend>
+    <div class="row"><label for="ev">Exposure</label><input id="ev" type="range" min="-4" max="4" step="0.05" value="0"><output for="ev">0.00</output></div>
+    <div class="row"><label for="blk">Black</label><input id="blk" type="range" min="0" max="0.6" step="0.005" value="0"><output for="blk">0.000</output></div>
+    <div class="row"><label for="wht">White</label><input id="wht" type="range" min="0.3" max="1.4" step="0.005" value="1"><output for="wht">1.000</output></div>
+    <div class="row"><label for="con">Contrast</label><input id="con" type="range" min="0.4" max="3" step="0.01" value="1.15"><output for="con">1.15</output></div>
+    <div class="row"><label for="gam">Gamma</label><input id="gam" type="range" min="0.4" max="3.2" step="0.01" value="2.2"><output for="gam">2.20</output></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Grain</legend>
+    <div class="row"><label for="grn">Amount</label><input id="grn" type="range" min="0" max="0.3" step="0.005" value="0.06"><output for="grn">0.060</output></div>
+    <div class="row"><label for="gsz">Size</label><input id="gsz" type="range" min="1" max="5" step="0.1" value="1.5"><output for="gsz">1.5</output></div>
+    <div class="chips" style="margin-top:6px">
+      <button class="chip" id="invert" aria-pressed="false">Invert to negative</button>
+    </div>
+  </fieldset>
+
+  <fieldset style="border-bottom:0">
+    <legend>Frame</legend>
+    <div id="meta" style="font-family:var(--mono);font-size:11px;color:var(--dim);line-height:1.7"></div>
+  </fieldset>
+</div>
+
+<footer>
+  <button id="resetBtn" disabled>Reset</button>
+  <button id="openBtn2">Open</button>
+  <button id="exportBtn" class="primary" disabled>Export JPEG</button>
+  <button id="exportPngBtn" disabled>Export PNG</button>
+  <button id="saveRecipeBtn" disabled>Save Recipe</button>
+</footer>
+
+<input type="file" id="file" accept=".dng,.DNG,.tif,.tiff,.TIF,.TIFF,image/x-adobe-dng,image/tiff" class="hidden">
+
+<script>
+/*__PARSER_START__*/
+/* ---------------------------------------------------------------
+   TIFF / DNG reader — vanilla, no dependencies.
+   Reads: uncompressed, LZW, Deflate, PackBits; strips or tiles;
+          8/16-bit; CFA Bayer, RGB, or grayscale.
+   Every read is bounds-checked; a bad tag is skipped, not thrown.
+----------------------------------------------------------------*/
+const TSIZE = {1:1,2:1,3:2,4:4,5:8,6:1,7:1,8:2,9:4,10:8,11:4,12:8,13:4,16:8,17:8,18:8};
+
+const TAGNAME = {
+  254:'NewSubfileType',256:'ImageWidth',257:'ImageLength',258:'BitsPerSample',
+  259:'Compression',262:'Photometric',271:'Make',272:'Model',273:'StripOffsets',
+  274:'Orientation',277:'SamplesPerPixel',278:'RowsPerStrip',279:'StripByteCounts',
+  284:'PlanarConfig',317:'Predictor',322:'TileWidth',323:'TileLength',
+  324:'TileOffsets',325:'TileByteCounts',330:'SubIFDs',339:'SampleFormat',
+  33421:'CFARepeatDim',33422:'CFAPattern',34665:'ExifIFD',
+  50706:'DNGVersion',50708:'UniqueCameraModel',50714:'BlackLevel',
+  50717:'WhiteLevel',50728:'AsShotNeutral',50829:'ActiveArea'
+};
+
+function readVals(dv, le, type, count, entryOff){
+  const unit = TSIZE[type] || 1;
+  const size = unit * count;
+  const off = size <= 4 ? entryOff + 8 : dv.getUint32(entryOff + 8, le);
+  if (off < 0 || off + size > dv.byteLength) return null;   // bad pointer — skip tag
+  const out = [];
+  for (let i = 0; i < count; i++){
+    switch(type){
+      case 1: case 2: case 6: case 7: out.push(dv.getUint8(off+i)); break;
+      case 3: out.push(dv.getUint16(off+i*2, le)); break;
+      case 4: case 13: out.push(dv.getUint32(off+i*4, le)); break;
+      case 8: out.push(dv.getInt16(off+i*2, le)); break;
+      case 9: out.push(dv.getInt32(off+i*4, le)); break;
+      case 5: { const n=dv.getUint32(off+i*8,le), d=dv.getUint32(off+i*8+4,le); out.push(d?n/d:0); break; }
+      case 10:{ const n=dv.getInt32(off+i*8,le),  d=dv.getInt32(off+i*8+4,le);  out.push(d?n/d:0); break; }
+      case 11: out.push(dv.getFloat32(off+i*4, le)); break;
+      case 12: out.push(dv.getFloat64(off+i*8, le)); break;
+      default: out.push(dv.getUint8(off+i));
+    }
+  }
+  return out;
+}
+
+function readIFD(dv, le, offset){
+  if (offset <= 0 || offset + 2 > dv.byteLength) return null;
+  const n = dv.getUint16(offset, le);
+  const end = offset + 2 + n*12 + 4;
+  if (n === 0 || end > dv.byteLength) return null;
+  const tags = {}, order = [];
+  for (let i = 0; i < n; i++){
+    const e = offset + 2 + i*12;
+    const tag = dv.getUint16(e, le);
+    const type = dv.getUint16(e+2, le);
+    const count = dv.getUint32(e+4, le);
+    if (count > 5e7) continue;
+    try {
+      const v = readVals(dv, le, type, count, e);
+      if (v){ tags[tag] = v; order.push({tag, type, count}); }
+    } catch (_) { /* malformed tag — ignore */ }
+  }
+  return { tags, order, next: dv.getUint32(offset + 2 + n*12, le) };
+}
+
+function collectIFDs(dv, le){
+  const list = [];
+  const seen = new Set();
+  const walk = (off, depth) => {
+    if (depth > 3) return;
+    let guard = 0;
+    while (off && guard++ < 32 && !seen.has(off)){
+      seen.add(off);
+      const ifd = readIFD(dv, le, off);
+      if (!ifd) return;
+      list.push(ifd);
+      if (ifd.tags[330]) for (const s of ifd.tags[330]) walk(s, depth+1);
+      off = ifd.next;
+    }
+  };
+  walk(dv.getUint32(4, le), 0);
+  return list;
+}
+
+/* ------------------------- decompressors ------------------------- */
+function lzwDecode(src, expected){
+  const out = new Uint8Array(expected);
+  const pfx = new Int32Array(4096), sfx = new Uint8Array(4096), first = new Uint8Array(4096);
+  const stack = new Uint8Array(8192);
+  for (let i = 0; i < 256; i++){ pfx[i] = -1; sfx[i] = i; first[i] = i; }
+  let next = 258, bits = 9, prev = -1, op = 0;
+  let acc = 0, nb = 0, p = 0;
+  const CLEAR = 256, EOI = 257;
+  while (op < expected){
+    while (nb < bits){ if (p >= src.length){ nb = -1; break; } acc = ((acc << 8) | src[p++]) >>> 0; nb += 8; }
+    if (nb < 0) break;
+    nb -= bits;
+    const code = (acc >>> nb) & ((1 << bits) - 1);
+    if (code === EOI) break;
+    if (code === CLEAR){ next = 258; bits = 9; prev = -1; continue; }
+    let sp = 0, k;
+    if (code < next){
+      k = code;
+    } else {
+      if (prev < 0) break;
+      stack[sp++] = first[prev];
+      k = prev;
+    }
+    while (k >= 0 && sp < stack.length){ stack[sp++] = sfx[k]; k = pfx[k]; }
+    const fc = stack[sp-1];
+    while (sp > 0 && op < expected) out[op++] = stack[--sp];
+    if (prev >= 0 && next < 4096){ pfx[next] = prev; sfx[next] = fc; first[next] = first[prev]; next++; }
+    prev = code;
+    if (next + 1 >= (1 << bits) && bits < 12) bits++;
+  }
+  return out;
+}
+
+function packBits(src, expected){
+  const out = new Uint8Array(expected);
+  let i = 0, o = 0;
+  while (o < expected && i < src.length){
+    const n = (src[i++] << 24) >> 24;
+    if (n >= 0){ for (let j = 0; j <= n && o < expected && i < src.length; j++) out[o++] = src[i++]; }
+    else if (n !== -128){ const b = src[i++]; for (let j = 0; j < 1-n && o < expected; j++) out[o++] = b; }
+  }
+  return out;
+}
+
+async function inflate(src){
+  if (typeof DecompressionStream === 'undefined')
+    throw new Error('This browser cannot read Deflate-compressed TIFFs.');
+  const ds = new DecompressionStream('deflate');
+  const stream = new Blob([src]).stream().pipeThrough(ds);
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+async function decompress(comp, src, expected){
+  switch(comp){
+    case 1: return src;
+    case 5: return lzwDecode(src, expected);
+    case 8: case 32946: return await inflate(src);
+    case 32773: return packBits(src, expected);
+    default: throw new Error('Compression type ' + comp + ' is not supported.');
+  }
+}
+
+function unpredict(buf, width, samples, bytesPer, rows, bytesPerRow, le){
+  if (bytesPer === 1){
+    for (let y = 0; y < rows; y++){
+      const b = y * bytesPerRow;
+      for (let x = samples; x < width * samples; x++) buf[b+x] = (buf[b+x] + buf[b+x-samples]) & 255;
+    }
+  } else {
+    const u16 = new Uint16Array(buf.buffer, buf.byteOffset, (buf.byteLength >> 1));
+    const stride = bytesPerRow >> 1;
+    for (let y = 0; y < rows; y++){
+      const b = y * stride;
+      for (let x = samples; x < width * samples; x++) u16[b+x] = (u16[b+x] + u16[b+x-samples]) & 0xFFFF;
+    }
+  }
+}
+
+/* --------------------------- main parse --------------------------- */
+async function parseTIFF(buffer){
+  const dv = new DataView(buffer);
+  if (buffer.byteLength < 16) throw new Error('File is too small to be an image.');
+  const bo = dv.getUint16(0, false);
+  let le;
+  if (bo === 0x4949) le = true;
+  else if (bo === 0x4D4D) le = false;
+  else throw new Error('Not a TIFF or DNG (unrecognised header).');
+  const magic = dv.getUint16(2, le);
+  if (magic === 43) throw new Error('BigTIFF is not supported. Save as standard TIFF.');
+  if (magic !== 42) throw new Error('Not a TIFF or DNG (bad magic number).');
+
+  const ifds = collectIFDs(dv, le);
+  if (!ifds.length) throw new Error('No image directory found — the file may be truncated.');
+
+  const hasPixels = t => t[256] && t[257] && (t[273] || t[324]);
+  // Prefer a CFA frame; otherwise the largest real image (skips thumbnails).
+  let raw = ifds.map(i => i.tags).find(t => hasPixels(t) && t[262] && t[262][0] === 32803);
+  if (!raw){
+    raw = ifds.map(i => i.tags).filter(hasPixels)
+              .sort((a,b) => b[256][0]*b[257][0] - a[256][0]*a[257][0])[0];
+  }
+  if (!raw) throw new Error('No pixel data found in this file.');
+
+  const width  = raw[256][0];
+  const height = raw[257][0];
+  if (!width || !height) throw new Error('Image has no dimensions.');
+
+  const photo   = raw[262] ? raw[262][0] : 1;
+  const samples = raw[277] ? raw[277][0] : 1;
+  const bpsArr  = raw[258] || [8];
+  const bits    = bpsArr[0];
+  if (bpsArr.some(b => b !== bits)) throw new Error('Mixed bit depths are not supported.');
+  if (bits !== 8 && bits !== 16) throw new Error(bits + '-bit data is not supported. Use 8 or 16-bit.');
+  if (raw[284] && raw[284][0] === 2) throw new Error('Planar TIFFs are not supported. Save as interleaved.');
+  if (raw[339] && raw[339][0] !== 1) throw new Error('Floating-point or signed TIFFs are not supported.');
+
+  const comp = raw[259] ? raw[259][0] : 1;
+  const bytesPer = bits >> 3;
+  const bytesPerRow = width * samples * bytesPer;
+  const image = new Uint8Array(bytesPerRow * height);
+
+  const tiled = !!raw[324];
+  if (tiled){
+    const tw = raw[322][0], tl = raw[323][0];
+    const offs = raw[324], cnts = raw[325] || [];
+    const across = Math.ceil(width / tw);
+    const tileRow = tw * samples * bytesPer;
+    for (let t = 0; t < offs.length; t++){
+      const len = cnts[t] !== undefined ? cnts[t] : 0;
+      if (offs[t] + len > buffer.byteLength) continue;
+      let d = await decompress(comp, new Uint8Array(buffer, offs[t], len), tileRow * tl);
+      if (bits === 16 && !le) byteswap(d);
+      if (raw[317] && raw[317][0] === 2) unpredict(d, tw, samples, bytesPer, tl, tileRow, le);
+      const cx = (t % across) * tw, cy = Math.floor(t / across) * tl;
+      const copyW = Math.min(tw, width - cx) * samples * bytesPer;
+      for (let y = 0; y < tl && cy + y < height; y++)
+        image.set(d.subarray(y*tileRow, y*tileRow + copyW), (cy+y)*bytesPerRow + cx*samples*bytesPer);
+    }
+  } else {
+    const offs = raw[273], cnts = raw[279] || [];
+    if (!offs || !offs.length) throw new Error('Image data offsets are missing.');
+    const rps = raw[278] ? Math.min(raw[278][0], height) : height;
+    let row = 0;
+    for (let s = 0; s < offs.length && row < height; s++){
+      const rows = Math.min(rps, height - row);
+      const len = cnts[s] !== undefined ? cnts[s] : bytesPerRow * rows;
+      if (offs[s] + len > buffer.byteLength) break;
+      let d = await decompress(comp, new Uint8Array(buffer, offs[s], len), bytesPerRow * rows);
+      if (bits === 16 && !le) byteswap(d);
+      if (raw[317] && raw[317][0] === 2) unpredict(d, width, samples, bytesPer, rows, bytesPerRow, le);
+      image.set(d.subarray(0, Math.min(d.length, bytesPerRow * rows)), row * bytesPerRow);
+      row += rows;
+    }
+    if (row < height * 0.9) throw new Error('Image data is truncated or incomplete.');
+  }
+
+  const anyTag = t => { for (const i of ifds) if (i.tags[t]) return i.tags[t]; return null; };
+  const mTag = anyTag(272) || anyTag(50708);
+  const model = mTag ? mTag.map(c => String.fromCharCode(c)).join('').replace(/\0/g,'').trim() : '';
+  const nTag = anyTag(50728);
+  const asShot = nTag && nTag.length === 3 ? nTag.slice() : null;
+
+  const base = {
+    pixels: bits === 16 ? new Uint16Array(image.buffer) : image,
+    width, height, bits, samples, model, asShot,
+    compression: comp, tiled, photometric: photo
+  };
+
+  if (photo === 32803){
+    let cfa = raw[33422] ? raw[33422].slice(0,4) : [2,1,1,0];
+    if (cfa.length !== 4) cfa = [2,1,1,0];
+    const white = raw[50717] ? raw[50717][0] : (1 << bits) - 1;
+    let black = raw[50714] ? raw[50714].slice() : [0];
+    if (black.length !== 4) black = [black[0]||0, black[0]||0, black[0]||0, black[0]||0];
+    let ax = 0, ay = 0, aw = width, ah = height;
+    if (raw[50829] && raw[50829].length === 4){
+      const [t,l,b,r] = raw[50829];
+      ay = t & ~1; ax = l & ~1;
+      ah = Math.min(height - ay, Math.max(2, b - ay));
+      aw = Math.min(width  - ax, Math.max(2, r - ax));
+    }
+    return Object.assign(base, { kind:'cfa', cfa, white, black, ax, ay, aw, ah });
+  }
+  if (photo === 0 || photo === 1) return Object.assign(base, { kind:'gray', invertGray: photo === 0 });
+  if (photo === 2) return Object.assign(base, { kind:'rgb' });
+  throw new Error('Photometric type ' + photo + ' is not supported.');
+}
+
+function byteswap(u8){
+  for (let i = 0; i + 1 < u8.length; i += 2){ const t = u8[i]; u8[i] = u8[i+1]; u8[i+1] = t; }
+}
+
+/* --------- normalise any source into 16-bit RGBA for the GPU --------- */
+function toRGBA16(f){
+  if (f.kind === 'cfa') return binCFA(f);
+
+  const { pixels, width, height, bits, samples } = f;
+  const out = new Uint16Array(width * height * 4);
+  const scale = bits === 8 ? 257 : 1;
+  const sum = [0,0,0]; let n = 0;
+
+  for (let y = 0; y < height; y++){
+    for (let x = 0; x < width; x++){
+      const s = (y*width + x) * samples;
+      const o = (y*width + x) * 4;
+      let r, g, b;
+      if (f.kind === 'gray'){
+        r = g = b = pixels[s] * scale;
+        if (f.invertGray) r = g = b = 65535 - r;
+      } else {
+        r = pixels[s] * scale; g = pixels[s+1] * scale; b = pixels[s+2] * scale;
+      }
+      out[o] = r; out[o+1] = g; out[o+2] = b; out[o+3] = 65535;
+      if ((x & 7) === 0 && (y & 7) === 0){ sum[0]+=r; sum[1]+=g; sum[2]+=b; n++; }
+    }
+  }
+  return { data: out, w: width, h: height, mean: n ? sum.map(v => v/n/65535) : [.5,.5,.5] };
+}
+
+/* 2x2 CFA tile -> one RGB pixel. No interpolation invented, ~1 stop less noise. */
+function binCFA(f){
+  const { pixels, width, cfa, white, black, ax, ay, aw, ah } = f;
+  const qw = aw >> 1, qh = ah >> 1;
+  const out = new Uint16Array(qw * qh * 4);
+
+  let sR = -1, sB = -1, sG = [];
+  for (let i = 0; i < 4; i++){
+    if (cfa[i] === 0) sR = i; else if (cfa[i] === 2) sB = i; else sG.push(i);
+  }
+  if (sR < 0 || sB < 0 || sG.length < 2){ sR = 3; sB = 0; sG = [1,2]; }
+
+  const dx = [0,1,0,1], dy = [0,0,1,1];
+  const scale = new Float32Array(4);
+  for (let i = 0; i < 4; i++) scale[i] = 65535 / Math.max(1, white - black[i]);
+
+  const sum = [0,0,0]; let n = 0;
+  for (let y = 0; y < qh; y++){
+    const rowBase = (ay + y*2) * width + ax;
+    let o = y * qw * 4;
+    for (let x = 0; x < qw; x++){
+      const p = rowBase + x*2;
+      const px = i => pixels[p + dy[i]*width + dx[i]];
+      let r = (px(sR) - black[sR]) * scale[sR];
+      let b = (px(sB) - black[sB]) * scale[sB];
+      let g = ((px(sG[0]) - black[sG[0]]) * scale[sG[0]] +
+               (px(sG[1]) - black[sG[1]]) * scale[sG[1]]) * 0.5;
+      r = r < 0 ? 0 : r > 65535 ? 65535 : r;
+      g = g < 0 ? 0 : g > 65535 ? 65535 : g;
+      b = b < 0 ? 0 : b > 65535 ? 65535 : b;
+      out[o] = r; out[o+1] = g; out[o+2] = b; out[o+3] = 65535;
+      o += 4;
+      if ((x & 7) === 0 && (y & 7) === 0){ sum[0]+=r; sum[1]+=g; sum[2]+=b; n++; }
+    }
+  }
+  return { data: out, w: qw, h: qh, mean: n ? sum.map(v => v/n/65535) : [.5,.5,.5] };
+}
+
+/* Structure dump — shown when a file won't open, so the cause is visible. */
+function describe(buffer){
+  const lines = [];
+  try {
+    const dv = new DataView(buffer);
+    const bo = dv.getUint16(0, false);
+    const le = bo === 0x4949;
+    lines.push(`bytes ${buffer.byteLength}  order ${bo===0x4949?'II':bo===0x4D4D?'MM':'?'}  magic ${dv.getUint16(2, le)}`);
+    const ifds = collectIFDs(dv, le);
+    ifds.forEach((ifd, i) => {
+      lines.push(`--- IFD ${i} (${ifd.order.length} tags)`);
+      for (const e of ifd.order){
+        const v = ifd.tags[e.tag];
+        const show = e.type === 2
+          ? v.slice(0,24).map(c => String.fromCharCode(c)).join('').replace(/\0/g,'')
+          : v.slice(0,6).join(',') + (v.length > 6 ? `,… (${v.length})` : '');
+        lines.push(`  ${e.tag} ${TAGNAME[e.tag] || ''} t${e.type} = ${show}`);
+      }
+    });
+  } catch (err){ lines.push('dump failed: ' + err.message); }
+  return lines.join('\n');
+}
+/*__PARSER_END__*/
+
+
+/* ------------------------- WebGL2 develop pass ------------------------- */
+const VS = `#version 300 es
+void main(){
+  vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
+  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}`;
+
+const FS = `#version 300 es
+precision highp float;
+precision highp usampler2D;
+uniform usampler2D uSrc;
+uniform vec3 uGain, uWeights;
+uniform mat3 uMix;
+uniform int uMode, uInvert, uColorMode;
+uniform float uEV, uBlack, uWhite, uContrast, uGamma, uGrain, uGrainSize, uSeed, uSat;
+out vec4 fragColor;
+
+float hash(vec2 p){
+  p = fract(p * vec2(443.8975, 441.4232));
+  p += dot(p, p + 19.19);
+  return fract((p.x + p.y) * p.x);
+}
+
+vec3 tone(vec3 c){
+  c *= exp2(uEV);
+  c = (c - uBlack) / max(uWhite - uBlack, 1e-4);
+  c = clamp(c, 0.0, 1.0);
+  c = clamp(0.5 + (c - 0.5) * uContrast, 0.0, 1.0);
+  return pow(c, vec3(1.0 / uGamma));
+}
+
+void main(){
+  ivec2 sz = textureSize(uSrc, 0);
+  ivec2 p = ivec2(gl_FragCoord.xy);
+  p.y = sz.y - 1 - p.y;
+  vec3 rgb = vec3(texelFetch(uSrc, p, 0).rgb) / 65535.0;
+  rgb *= uGain;
+
+  vec3 c;
+  if (uColorMode == 1){
+    c = tone(max(uMix * rgb, 0.0));
+    float l = dot(c, vec3(0.30, 0.59, 0.11));
+    c = clamp(mix(vec3(l), c, uSat), 0.0, 1.0);
+  } else {
+    float v;
+    if (uMode == 0)      v = rgb.r;
+    else if (uMode == 1) v = rgb.b;
+    else if (uMode == 2) v = dot(rgb, uWeights / max(uWeights.r + uWeights.g + uWeights.b, 1e-4));
+    else {
+      // NDVI orientation: (NIR - red) / (NIR + red). B holds the NIR band.
+      float d = (rgb.b - rgb.r) / max(rgb.b + rgb.r, 1e-4);
+      v = 0.5 + 0.5 * d;
+    }
+    c = tone(vec3(v));
+  }
+
+  if (uGrain > 0.0){
+    vec2 g = floor(gl_FragCoord.xy / uGrainSize);
+    float n = (hash(g + uSeed) + hash(g * 1.7 + uSeed * 3.1)) * 0.5;
+    float l = dot(c, vec3(0.30, 0.59, 0.11));
+    c += (n - 0.5) * uGrain * (4.0 * l * (1.0 - l) + 0.2);
+  }
+  if (uInvert == 1) c = 1.0 - c;
+  fragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
+}`;
+
+const $ = id => document.getElementById(id);
+const canvas = $('gl');
+let gl, prog, tex, U = {}, frame = null, binned = null, srcName = 'frame';
+
+function initGL(){
+  gl = canvas.getContext('webgl2', { preserveDrawingBuffer:true, antialias:false, alpha:false });
+  if (!gl) throw new Error('This browser has no WebGL2. Try Safari 15+ or Chrome.');
+  const mk = (t, src) => {
+    const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+    return s;
+  };
+  prog = gl.createProgram();
+  gl.attachShader(prog, mk(gl.VERTEX_SHADER, VS));
+  gl.attachShader(prog, mk(gl.FRAGMENT_SHADER, FS));
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+  gl.useProgram(prog);
+  for (const n of ['uSrc','uGain','uWeights','uMix','uMode','uInvert','uColorMode','uEV','uBlack','uWhite','uContrast','uGamma','uGrain','uGrainSize','uSeed','uSat'])
+    U[n] = gl.getUniformLocation(prog, n);
+  gl.bindVertexArray(gl.createVertexArray());
+}
+
+function upload(b){
+  if (tex) gl.deleteTexture(tex);
+  tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16UI, b.w, b.h, 0, gl.RGBA_INTEGER, gl.UNSIGNED_SHORT, b.data);
+  canvas.width = b.w; canvas.height = b.h;
+  gl.uniform1i(U.uSrc, 0);
+}
+
+const S = {}; // slider state
+let pending = false;
+let irProfile = { name:'', loNm:530, hiNm:750, channelGain:[1,1,1], notes:'' };
+const esc = s => String(s ?? '').replace(/[&<>\"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));
+function draw(){
+  if (!binned) return;
+  pending = false;
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.uniform3f(U.uGain, S.gR, S.gG, S.gB);
+  gl.uniform3f(U.uWeights, S.wR, S.wG, S.wB);
+  gl.uniform1i(U.uMode, S.mode);
+  gl.uniform1i(U.uColorMode, S.color ? 1 : 0);
+  gl.uniform1f(U.uSat, S.sat);
+  // S.mix is row-major (out x in); GLSL wants columns.
+  const m = S.mix;
+  gl.uniformMatrix3fv(U.uMix, false, [m[0],m[3],m[6], m[1],m[4],m[7], m[2],m[5],m[8]]);
+  gl.uniform1i(U.uInvert, S.invert ? 1 : 0);
+  gl.uniform1f(U.uEV, S.ev);
+  gl.uniform1f(U.uBlack, S.blk);
+  gl.uniform1f(U.uWhite, S.wht);
+  gl.uniform1f(U.uContrast, S.con);
+  gl.uniform1f(U.uGamma, S.gam);
+  gl.uniform1f(U.uGrain, S.grn);
+  gl.uniform1f(U.uGrainSize, S.gsz);
+  gl.uniform1f(U.uSeed, S.seed);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+function render(){ if (!pending){ pending = true; requestAnimationFrame(draw); } }
+
+/* ------------------------------ controls ------------------------------ */
+const SLIDERS = ['gR','gG','gB','wR','wG','wB','ev','blk','wht','con','gam','grn','gsz'];
+const DEC = { ev:2, blk:3, wht:3, grn:3, gsz:1 };
+
+function syncOut(id){
+  const el = $(id);
+  const out = document.querySelector(`output[for="${id}"]`);
+  if (out) out.textContent = parseFloat(el.value).toFixed(DEC[id] ?? 2);
+}
+SLIDERS.forEach(id => {
+  const el = $(id);
+  S[id] = parseFloat(el.value);
+  el.addEventListener('input', () => { S[id] = parseFloat(el.value); syncOut(id); render(); if (id==='gR'||id==='gG'||id==='gB'||id==='ev'||id==='blk'||id==='wht') updateDiagnostics(); });
+});
+S.mode = 0; S.invert = false; S.seed = 7.13;
+S.color = false; S.sat = 1;
+S.mix = [1,0,0, 0,1,0, 0,0,1];   // row-major: out(R,G,B) x in(R,G,B)
+
+/* ---- colour routing ---------------------------------------------------
+   Each output colour is driven by captured bands. Under a 530–750 filter
+   the captured B channel is close to pure 700–750nm NIR, so routing it to
+   the red output is what gives the Aerochrome-style false colour.        */
+const OUTCOL = ['#C9422A','#4E9E3E','#3A63C4'];
+const OUTNAME = ['Red','Green','Blue'];
+const SRCNAME = ['R','G','B'];
+
+const CPRESETS = {
+  identity: [1,0,0, 0,1,0, 0,0,1],
+  swap:     [0,0,1, 0,1,0, 1,0,0],   // classic IR red/blue swap
+  aero:     [0,0,1, 1,0,0, 0,1,0],   // NIR->red, red->green, green->blue
+  rotate:   [0,1,0, 0,0,1, 1,0,0]
+};
+
+const routes = $('routes');
+for (let i = 0; i < 3; i++){
+  const row = document.createElement('div');
+  row.className = 'route';
+  row.innerHTML =
+    `<span class="out"><i style="background:${OUTCOL[i]}"></i>${OUTNAME[i]}</span>` +
+    `<span class="srcs">${SRCNAME.map((s,j) =>
+      `<button data-o="${i}" data-s="${j}" aria-pressed="${i===j}" aria-label="${OUTNAME[i]} output from captured ${s}">${s}</button>`
+    ).join('')}</span>`;
+  routes.appendChild(row);
+}
+routes.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const o = +b.dataset.o, s = +b.dataset.s;
+  for (let j = 0; j < 3; j++){ S.mix[o*3 + j] = (j === s) ? 1 : 0; setM(o, j, j === s ? 1 : 0); }
+  syncRoutes(); paintSpectrum(); render();
+});
+
+/* blend matrix — arbitrary mixes, including subtraction */
+const mixGrid = $('mixGrid');
+const MIDS = [];
+for (let i = 0; i < 3; i++){
+  const head = document.createElement('div');
+  head.className = 'mhead';
+  head.textContent = OUTNAME[i].toUpperCase() + ' OUT';
+  mixGrid.appendChild(head);
+  for (let j = 0; j < 3; j++){
+    const id = 'm' + i + j; MIDS.push(id);
+    const row = document.createElement('div');
+    row.className = 'mrow';
+    row.innerHTML =
+      `<label for="${id}">from ${SRCNAME[j]}</label>` +
+      `<input id="${id}" type="range" min="-1" max="2" step="0.01" value="${i===j?1:0}">` +
+      `<output for="${id}">${(i===j?1:0).toFixed(2)}</output>`;
+    mixGrid.appendChild(row);
+    row.querySelector('input').addEventListener('input', e => {
+      S.mix[i*3 + j] = parseFloat(e.target.value);
+      row.querySelector('output').textContent = parseFloat(e.target.value).toFixed(2);
+      syncRoutes(); paintSpectrum(); render();
+    });
+  }
+}
+function setM(i, j, v){
+  const el = $('m' + i + j);
+  if (!el) return;
+  el.value = v;
+  const o = document.querySelector(`output[for="m${i}${j}"]`);
+  if (o) o.textContent = v.toFixed(2);
+}
+function syncRoutes(){
+  // A route button is lit only when that source is the sole contributor.
+  routes.querySelectorAll('button').forEach(b => {
+    const o = +b.dataset.o, s = +b.dataset.s;
+    const row = S.mix.slice(o*3, o*3+3);
+    const pure = row[s] === 1 && row.every((v,k) => k === s || v === 0);
+    b.setAttribute('aria-pressed', String(pure));
+  });
+}
+function applyCPreset(name){
+  const m = CPRESETS[name]; if (!m) return;
+  S.mix = m.slice();
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) setM(i, j, m[i*3+j]);
+  document.querySelectorAll('#colorPresets .chip').forEach(c =>
+    c.setAttribute('aria-pressed', String(c.dataset.cp === name)));
+  syncRoutes(); paintSpectrum(); render();
+}
+document.querySelectorAll('#colorPresets .chip').forEach(c =>
+  c.addEventListener('click', () => applyCPreset(c.dataset.cp)));
+
+$('sat').addEventListener('input', e => {
+  S.sat = parseFloat(e.target.value);
+  document.querySelector('output[for="sat"]').textContent = S.sat.toFixed(2);
+  render();
+});
+
+$('advToggle').addEventListener('click', e => {
+  const open = $('mixGrid').classList.toggle('hidden') === false;
+  e.currentTarget.setAttribute('aria-pressed', String(open));
+  e.currentTarget.setAttribute('aria-expanded', String(open));
+});
+
+function setOutput(mode){
+  S.color = mode === 'color';
+  document.querySelectorAll('#outChips .chip').forEach(c =>
+    c.setAttribute('aria-pressed', String(c.dataset.out === mode)));
+  $('monoSection').classList.toggle('hidden', S.color);
+  $('colorSection').classList.toggle('hidden', !S.color);
+  paintSpectrum(); render();
+}
+document.querySelectorAll('#outChips .chip').forEach(c =>
+  c.addEventListener('click', () => setOutput(c.dataset.out)));
+
+function setSlider(id, v){ $(id).value = v; S[id] = v; syncOut(id); }
+
+function setMode(m){
+  S.mode = m;
+  document.querySelectorAll('#mixChips .chip').forEach(c =>
+    c.setAttribute('aria-pressed', String(+c.dataset.mode === m)));
+  $('customMix').classList.toggle('hidden', m !== 2);
+  paintSpectrum();
+  render();
+}
+document.querySelectorAll('#mixChips .chip').forEach(c =>
+  c.addEventListener('click', () => setMode(+c.dataset.mode)));
+
+$('invert').addEventListener('click', e => {
+  S.invert = !S.invert;
+  e.currentTarget.setAttribute('aria-pressed', String(S.invert));
+  render();
+});
+
+/* white balance helpers */
+function applyGray(){
+  if (!binned) return;
+  const m = binned.mean, avg = (m[0] + m[1] + m[2]) / 3 || 1;
+  setSlider('gR', clampG(avg / Math.max(m[0], 1e-4)));
+  setSlider('gG', clampG(avg / Math.max(m[1], 1e-4)));
+  setSlider('gB', clampG(avg / Math.max(m[2], 1e-4)));
+  render();
+}
+const clampG = v => Math.min(6, Math.max(0.2, +v.toFixed(2)));
+function applyShot(){
+  const n = frame && frame.asShot;
+  if (!n){ status('No as-shot balance recorded in this file.', true); return; }
+  const g = n.map(v => v > 0 ? 1 / v : 1);
+  const mid = g[1] || 1;
+  setSlider('gR', clampG(g[0] / mid)); setSlider('gG', 1); setSlider('gB', clampG(g[2] / mid));
+  render();
+}
+function applyFlat(){ setSlider('gR',1); setSlider('gG',1); setSlider('gB',1); render(); }
+$('wbGray').addEventListener('click', applyGray);
+$('wbShot').addEventListener('click', applyShot);
+$('wbFlat').addEventListener('click', applyFlat);
+
+/* ---- eyedropper -------------------------------------------------------
+   Samples the source data *before* gain, so picking twice on the same
+   patch lands in the same place instead of compounding.                  */
+let picking = false, lastPick = null;
+
+function srgbToLinear(v){ v /= 255; return v <= 0.04045 ? v/12.92 : Math.pow((v+0.055)/1.055, 2.4); }
+function linearToSrgb(v){ v = Math.max(0, Math.min(1, v)); return Math.round(255 * (v <= 0.0031308 ? v*12.92 : 1.055*Math.pow(v, 1/2.4) - 0.055)); }
+function aimLinear(){
+  const h = $('aim').value;
+  return [1,3,5].map(i => srgbToLinear(parseInt(h.substr(i,2), 16)));
+}
+
+function samplePatch(ix, iy, r){
+  if (!binned) return null;
+  let sr=0, sg=0, sb=0, n=0;
+  for (let y = iy-r; y <= iy+r; y++){
+    if (y < 0 || y >= binned.h) continue;
+    for (let x = ix-r; x <= ix+r; x++){
+      if (x < 0 || x >= binned.w) continue;
+      const o = (y*binned.w + x)*4;
+      sr += binned.data[o]; sg += binned.data[o+1]; sb += binned.data[o+2]; n++;
+    }
+  }
+  return n ? [sr/n/65535, sg/n/65535, sb/n/65535] : null;
+}
+
+/* Solve gains so the sampled patch reads as the aim colour, holding
+   luminance steady so balancing doesn't double as an exposure change. */
+function balanceTo(sample){
+  const t = aimLinear(), eps = 1e-4;
+  let g = [0,1,2].map(i => (t[i] + eps) / (sample[i] + eps));
+  const W = [0.30, 0.59, 0.11];
+  const l0 = W.reduce((a,w,i) => a + w*sample[i], 0);
+  const l1 = W.reduce((a,w,i) => a + w*sample[i]*g[i], 0);
+  const s = l1 > eps ? l0/l1 : 1;
+  const raw = g.slice();
+  g = g.map(v => Math.min(6, Math.max(0.2, +(v*s).toFixed(2))));
+  setSlider('gR', g[0]); setSlider('gG', g[1]); setSlider('gB', g[2]);
+  render();
+
+  const names = ['red','green','blue'];
+  const hit = raw.map((v,i) => v*s > 6.01 || v*s < 0.199 ? names[i] : null).filter(Boolean);
+  const hex = '#' + sample.map(v => linearToSrgb(v).toString(16).padStart(2,'0')).join('');
+  $('sampled').innerHTML =
+    `<span class="swatch" style="background:${hex}"></span>` +
+    `sampled <b>${sample.map(v => v.toFixed(3)).join(' / ')}</b>` +
+    (hit.length ? `<br>${hit.join(' and ')} hit the gain limit — too little signal in that band to neutralise here.` : '');
+}
+
+function pickAt(clientX, clientY){
+  if (!binned) return;
+  const r = canvas.getBoundingClientRect();
+  if (!r.width || !r.height) return;
+  const ix = Math.floor((clientX - r.left) / r.width  * binned.w);
+  const iy = Math.floor((clientY - r.top)  / r.height * binned.h);
+  if (ix < 0 || iy < 0 || ix >= binned.w || iy >= binned.h) return;
+  const radius = Math.max(2, Math.round(binned.w / 240));   // ~5px patch at preview scale
+  const s = samplePatch(ix, iy, radius);
+  if (!s) return;
+  lastPick = [ix, iy];
+  balanceTo(s);
+  const st = $('stage').getBoundingClientRect();
+  const dot = $('pickDot');
+  dot.style.left = (clientX - st.left) + 'px';
+  dot.style.top  = (clientY - st.top)  + 'px';
+  dot.classList.add('on');
+}
+
+function setPicking(on){
+  picking = on;
+  $('wbPick').setAttribute('aria-pressed', String(on));
+  canvas.classList.toggle('picking', on);
+  status(on ? 'Tap or drag on the image to set balance.' : '');
+}
+$('wbPick').addEventListener('click', () => setPicking(!picking));
+
+let dragging = false;
+canvas.addEventListener('pointerdown', e => {
+  if (!picking) return;
+  dragging = true;
+  canvas.setPointerCapture(e.pointerId);
+  pickAt(e.clientX, e.clientY);
+  e.preventDefault();
+});
+canvas.addEventListener('pointermove', e => { if (picking && dragging) pickAt(e.clientX, e.clientY); });
+canvas.addEventListener('pointerup', e => {
+  dragging = false;
+  if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointercancel', () => { dragging = false; });
+
+// Changing the aim re-solves against the patch already chosen.
+$('aim').addEventListener('input', () => {
+  if (!lastPick) return;
+  const s = samplePatch(lastPick[0], lastPick[1], Math.max(2, Math.round(binned.w/240)));
+  if (s) balanceTo(s);
+});
+
+/* spectrum strip: 400–1000nm mapped across the bar */
+function nmToPct(nm){ return (nm - 400) / 600 * 100; }
+const BANDCOL = [[201,66,42],[78,158,62],[58,99,196]];
+function bandColor(j){
+  let r=0, g=0, b=0, tot=0;
+  for (let i = 0; i < 3; i++){
+    const w = Math.max(0, S.mix[i*3 + j]);
+    tot += w; r += w*BANDCOL[i][0]; g += w*BANDCOL[i][1]; b += w*BANDCOL[i][2];
+  }
+  if (tot <= 0.001) return null;
+  return { css:`rgb(${Math.round(r/tot)},${Math.round(g/tot)},${Math.round(b/tot)})`, weight:tot };
+}
+function paintSpectrum(){
+  $('cutLo').style.cssText = `left:0;width:${nmToPct(530)}%`;
+  $('cutHi').style.cssText = `right:0;left:${nmToPct(750)}%`;
+  $('tLo').style.left = nmToPct(530) + '%';
+  $('tHi').style.left = nmToPct(750) + '%';
+  const bar = (el, lo, hi) => { el.style.left = nmToPct(lo)+'%'; el.style.width = (nmToPct(hi)-nmToPct(lo))+'%'; };
+  bar($('chR'), 590, 750); bar($('chG'), 530, 600); bar($('chB'), 700, 750);
+  $('chR').style.bottom = '10px'; $('chG').style.bottom = '5px'; $('chB').style.bottom = '0px';
+
+  const els = [$('chR'), $('chG'), $('chB')];
+  if (S.color){
+    // Each captured band is painted the colour it now drives in the output.
+    els.forEach((el, j) => {
+      const c = bandColor(j);
+      el.style.background = c ? c.css : '#3A3128';
+      el.classList.toggle('on', !!c);
+      el.style.opacity = c ? String(Math.min(1, 0.35 + c.weight * 0.65)) : '.15';
+    });
+  } else {
+    els.forEach((el, j) => {
+      el.style.background = `rgb(${BANDCOL[j].join(',')})`;
+      el.style.opacity = '';
+    });
+    const on = { 0:['chR'], 1:['chB'], 3:['chR','chB'], 2:['chR','chG','chB'] }[S.mode] || [];
+    ['chR','chG','chB'].forEach(id => $(id).classList.toggle('on', on.includes(id)));
+  }
+}
+
+const PRESETS = {
+  0: { con:1.15, gam:2.2,  blk:0.0,  wht:1.0,  grn:0.05 },
+  1: { con:1.45, gam:2.0,  blk:0.02, wht:0.85, grn:0.11 },
+  2: { con:1.15, gam:2.2,  blk:0.0,  wht:1.0,  grn:0.06 },
+  3: { con:1.9,  gam:1.0,  blk:0.15, wht:0.95, grn:0.04 }
+};
+function loadPreset(m){ const p = PRESETS[m]; for (const k in p) setSlider(k, p[k]); setMode(m); }
+
+
+/* ---------------------- calibration and diagnostics ---------------------- */
+function updateBandLabel(){
+  const lo = Math.min(+$('loNm').value, +$('hiNm').value - 1);
+  const hi = Math.max(+$('hiNm').value, lo + 1);
+  $('loNm').value = lo; $('hiNm').value = hi;
+  document.querySelector('output[for="loNm"]').textContent = lo;
+  document.querySelector('output[for="hiNm"]').textContent = hi;
+  $('bandLabel').textContent = `${lo}–${hi} nm · ${binned ? `${binned.w}×${binned.h}` : 'awaiting frame'}`;
+  $('tLo').textContent = lo; $('tHi').textContent = hi;
+  $('cutLo').style.width = `${Math.max(0, Math.min(100, nmToPct(lo)))}%`;
+  $('cutHi').style.left = `${Math.max(0, Math.min(100, nmToPct(hi)))}%`;
+  $('tLo').style.left = nmToPct(lo) + '%'; $('tHi').style.left = nmToPct(hi) + '%';
+}
+function updateDiagnostics(){
+  if (!binned) return;
+  const c = $('histogram'), ctx = c.getContext('2d');
+  ctx.clearRect(0,0,c.width,c.height); ctx.fillStyle = '#0B0A09'; ctx.fillRect(0,0,c.width,c.height);
+  const bins = [new Uint32Array(64),new Uint32Array(64),new Uint32Array(64)];
+  let low = [0,0,0], high = [0,0,0], total = binned.w*binned.h;
+  for (let i=0; i<binned.data.length; i+=4){
+    for (let k=0;k<3;k++){ const v=binned.data[i+k]; bins[k][Math.min(63, v>>10)]++; if(v<=512) low[k]++; if(v>=65023) high[k]++; }
+  }
+  const max = Math.max(1, ...bins.flat());
+  const colors = ['#C9422A','#4E9E3E','#3A63C4'];
+  for (let k=0;k<3;k++){ ctx.strokeStyle=colors[k]; ctx.globalAlpha=.78; ctx.beginPath(); for(let x=0;x<64;x++){ const y=c.height-4-(bins[k][x]/max)*(c.height-12); if(x===0)ctx.moveTo(x*5.6,y); else ctx.lineTo(x*5.6,y); } ctx.stroke(); }
+  ctx.globalAlpha=1; ctx.strokeStyle='#8C8377'; ctx.beginPath(); ctx.moveTo(0,c.height-3);ctx.lineTo(c.width,c.height-3);ctx.stroke();
+  const lowPct=low.map(v=>(v/total*100).toFixed(2)), highPct=high.map(v=>(v/total*100).toFixed(2));
+  $('clipStatus').textContent = `shadow floor R/G/B ${lowPct.join(' / ')}% · highlight ceiling R/G/B ${highPct.join(' / ')}%` + (high.some(v=>v/total>.001) ? ' · clipping risk' : '');
+}
+function applyProfile(p){
+  if (!p || typeof p !== 'object') throw new Error('Profile must be a JSON object.');
+  irProfile = { ...irProfile, ...p };
+  if (p.filter){ irProfile.loNm = +p.filter.low_nm || irProfile.loNm; irProfile.hiNm = +p.filter.high_nm || irProfile.hiNm; }
+  if (Array.isArray(p.channelGain) && p.channelGain.length===3){ ['gR','gG','gB'].forEach((id,i)=>setSlider(id, Math.min(6,Math.max(.2,+p.channelGain[i]||1)))); }
+  $('loNm').value=irProfile.loNm; $('hiNm').value=irProfile.hiNm;
+  $('profileStatus').textContent = `${irProfile.name || 'Loaded profile'} · measured response curves should be treated as camera/filter/lens-specific.`;
+  updateBandLabel(); paintSpectrum(); render();
+}
+$('loNm').addEventListener('input', updateBandLabel); $('hiNm').addEventListener('input', updateBandLabel);
+$('loadProfileBtn').addEventListener('click', () => $('profileFile').click());
+$('profileFile').addEventListener('change', async e => { const f=e.target.files[0]; if(!f)return; try{ applyProfile(JSON.parse(await f.text())); status('Calibration profile loaded.'); }catch(err){ status('Profile error: '+err.message,true); } e.target.value=''; });
+$('clearProfileBtn').addEventListener('click', () => { irProfile={name:'',loNm:+$('loNm').value,hiNm:+$('hiNm').value,channelGain:[1,1,1],notes:''}; $('profileStatus').textContent='No measured response profile loaded · channel labels are estimates.'; });
+
+function recipe(){ return { version:'IR DEV 2.0', source:srcName, filter:{low_nm:+$('loNm').value,high_nm:+$('hiNm').value}, profile:irProfile, mode:S.mode, color:S.color, invert:S.invert, gains:[S.gR,S.gG,S.gB], weights:[S.wR,S.wG,S.wB], mix:S.mix.slice(), tone:{ev:S.ev,black:S.blk,white:S.wht,contrast:S.con,gamma:S.gam}, grain:{amount:S.grn,size:S.gsz,seed:S.seed}, output:{width:binned?.w||0,height:binned?.h||0,binned:frame?.kind==='cfa'} }; }
+function downloadBlob(blob,name){ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),5000); }
+$('saveRecipeBtn').addEventListener('click', () => { downloadBlob(new Blob([JSON.stringify(recipe(),null,2)],{type:'application/json'}), `${srcName}_ir_recipe.json`); status('Saved processing recipe.'); });
+$('exportPngBtn').addEventListener('click', () => { draw(); canvas.toBlob(b=>{ if(!b){status('PNG export failed.',true);return;} downloadBlob(b,`${srcName}_ir.png`); status(`Exported ${srcName}_ir.png · ${canvas.width}×${canvas.height}`); },'image/png'); });
+
+/* ------------------------------ file I/O ------------------------------ */
+function status(msg, isErr){
+  const s = $('status');
+  s.textContent = msg || '';
+  s.classList.toggle('err', !!isErr);
+}
+
+$('openBtn').addEventListener('click', () => $('file').click());
+$('openBtn2').addEventListener('click', () => $('file').click());
+$('file').addEventListener('change', e => { const f = e.target.files[0]; if (f) load(f); e.target.value = ''; });
+
+['dragover','drop'].forEach(t => document.addEventListener(t, e => e.preventDefault()));
+document.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) load(f); });
+
+async function load(file){
+  srcName = file.name.replace(/\.[^.]+$/, '');
+  status('Reading ' + file.name + '…');
+  let buf;
+  try {
+    if (!gl) initGL();
+    buf = await file.arrayBuffer();
+    await new Promise(r => setTimeout(r, 0));
+    status('Decoding…');
+    frame = await parseTIFF(buf);
+    binned = toRGBA16(frame);
+    upload(binned);
+
+    $('pickDot').classList.remove('on');
+    lastPick = null;
+    setPicking(false);
+    $('panel').classList.remove('hidden');
+    $('drop').classList.add('hide');
+    $('exportBtn').disabled = false;
+    $('exportPngBtn').disabled = false;
+    $('saveRecipeBtn').disabled = false;
+    $('resetBtn').disabled = false;
+    canvas.classList.add('up');
+
+    const COMP = {1:'none',5:'LZW',8:'deflate',32946:'deflate',32773:'PackBits'};
+    const kindLine = {
+      cfa:  () => `bayer &nbsp;${frame.cfa.map(c => 'RGB'[c]).join('')} · black ${frame.black[0]} · white ${frame.white}`,
+      rgb:  () => `source&nbsp;&nbsp;RGB · ${frame.bits}-bit`,
+      gray: () => `source&nbsp;&nbsp;grayscale · ${frame.bits}-bit`
+    }[frame.kind];
+
+    updateBandLabel();
+    updateDiagnostics();
+    $('meta').innerHTML =
+      `file &nbsp;&nbsp;&nbsp;&nbsp;${frame.width}×${frame.height} · ${COMP[frame.compression] || frame.compression}` +
+      (frame.tiled ? ' · tiled' : '') + '<br>' +
+      kindLine() + '<br>' +
+      `output &nbsp;${binned.w}×${binned.h}` + (frame.kind === 'cfa' ? ' · 2×2 binned' : '') +
+      (frame.model ? `<br>model &nbsp;${frame.model}` : '');
+
+    // A single-channel source has no bands to separate — mixing would be a lie.
+    const mono = frame.kind === 'gray';
+    document.querySelectorAll('#mixChips .chip').forEach(c => { c.disabled = mono; });
+    document.querySelectorAll('#outChips .chip').forEach(c => {
+      if (c.dataset.out === 'color') c.disabled = mono;
+    });
+    $('spectrum').style.opacity = mono ? '.25' : '1';
+    document.querySelectorAll('#wbGray,#wbShot,#wbFlat,#wbPick').forEach(b => { b.disabled = mono; });
+    $('aim').disabled = mono;
+    if (mono) setPicking(false);
+
+    if (mono){ applyFlat(); setOutput('mono'); setMode(0); loadPreset(0); }
+    else { applyGray(); setMode(0); loadPreset(0); }
+
+    updateDiagnostics();
+    status(`${file.name} · ${(file.size/1048576).toFixed(1)} MB`
+           + (mono ? ' · single channel, mix unavailable' : ''));
+  } catch (err){
+    console.error(err);
+    status(err.message, true);
+    if (buf) showDump(buf, err.message);
+  }
+}
+
+/* When a file won't open, print its actual structure rather than guessing. */
+function showDump(buf, msg){
+  let box = $('dump');
+  if (!box){
+    box = document.createElement('div');
+    box.id = 'dump';
+    box.innerHTML =
+      `<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+         <strong style="font-family:var(--mono);font-size:10.5px;letter-spacing:.2em;color:var(--dim)">FILE STRUCTURE</strong>
+         <button class="chip" id="copyDump" style="min-height:32px;margin-left:auto">Copy</button>
+       </div><pre id="dumpText"></pre>`;
+    box.style.cssText = 'padding:12px 14px;border-top:1px solid var(--edge);max-height:40vh;overflow:auto';
+    box.querySelector('pre').style.cssText =
+      'font-family:var(--mono);font-size:10.5px;line-height:1.5;color:var(--dim);margin:0;white-space:pre-wrap';
+    $('panel').appendChild(box);
+    $('copyDump').addEventListener('click', () => {
+      navigator.clipboard.writeText($('dumpText').textContent)
+        .then(() => status('Structure copied.'), () => status('Copy unavailable — screenshot instead.', true));
+    });
+  }
+  $('dumpText').textContent = msg + '\n\n' + describe(buf);
+  $('panel').classList.remove('hidden');
+  $('drop').classList.add('hide');
+  box.scrollIntoView({ block:'nearest' });
+}
+
+$('resetBtn').addEventListener('click', () => {
+  setPicking(false);
+  $('pickDot').classList.remove('on');
+  lastPick = null;
+  $('sampled').textContent = 'Tap the image to neutralise a patch.';
+  setOutput('mono');
+  applyCPreset('identity');
+  S.sat = 1; $('sat').value = 1;
+  document.querySelector('output[for="sat"]').textContent = '1.00';
+  applyGray(); setMode(0); loadPreset(0);
+  S.invert = false;
+  $('invert').setAttribute('aria-pressed','false');
+  render();
+});
+
+$('exportBtn').addEventListener('click', () => {
+  draw();
+  canvas.toBlob(b => {
+    if (!b){ status('JPEG export failed — the frame is too large for this browser.', true); return; }
+    downloadBlob(b, `${srcName}_ir.jpg`);
+    status(`Exported ${srcName}_ir.jpg · ${canvas.width}×${canvas.height}`);
+  }, 'image/jpeg', 0.94);
+});
+
+SLIDERS.forEach(syncOut);
+syncRoutes();
+paintSpectrum();
+updateBandLabel();
+</script>
+</body>
+</html>
