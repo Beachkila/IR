@@ -1,0 +1,16 @@
+{
+  "name": "IR DEV",
+  "short_name": "IR DEV",
+  "description": "Develops 530-750 nm infrared DNG and TIFF captures in the browser.",
+  "start_url": "../",
+  "scope": "../",
+  "display": "standalone",
+  "background_color": "#0B0A09",
+  "theme_color": "#0B0A09",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
